@@ -10,66 +10,60 @@ from rich.table import Table
 from rich.live import Live
 from rich.prompt import Prompt
 
-# Shitty console output
 console = Console()
+working_proxies = set()  
+
 
 def fetch_proxies(country_code='de', max_results=20):
-    """Fetch a bunch of proxy servers to help with rate limits."""
     url = f"https://api.proxyscrape.com/v2/?request=getproxies&protocol=http&country={country_code}&ssl=all&anonymity=all&limit={max_results}"
     try:
         response = requests.get(url)
         if response.ok:
             proxies = response.text.strip().split('\r\n')
-            return [proxy for proxy in proxies if proxy]  # Filter out any empty results
+            return [proxy for proxy in proxies if proxy]  
     except requests.RequestException as err:
-        console.print(f"[red]⚠️ Error fetching proxies: {err}[/red]")
-    return []
+        console.print(f"[red]⚠️ Error fetching proxies: {err}[/red]")  
+    return []  
 
+# Random Words  
 def get_random_words(min_len=3, max_len=5, amount=100):
-    """Fetch some random words to generate usernames from."""
     api_url = f"https://random-word-api.herokuapp.com/word?number={amount}"
     try:
         response = requests.get(api_url)
         if response.ok:
             words = response.json()
-            return [word for word in words if min_len <= len(word) <= max_len]
+            return [word for word in words if min_len <= len(word) <= max_len]  
     except requests.RequestException as err:
         console.print(f"[red]⚠️ Couldn't fetch word list: {err}[/red]")
     return []
 
-# Stealing valid proxies 🎭
-working_proxies = set()
-
+#Roblox username checker
 def check_roblox_username(username, proxy=None):
-    """Verify if a given username is available on Roblox."""
     url = f"https://auth.roblox.com/v1/usernames/validate?request.username={username}&request.birthday=2000-01-01"
     try:
         response = requests.get(url, proxies={'http': f'http://{proxy}', 'https': f'http://{proxy}'} if proxy else None, timeout=5)
         if response.status_code == 200:
-            return username if response.json().get('code') == 0 else None
+            return username if response.json().get('code') == 0 else None  
         elif response.status_code == 429:
-            time.sleep(0.2)  # Rate limit hit let's slow down ok ?
+            time.sleep(0.2)  # if rate-limited slow down nigga !?
     except requests.RequestException:
         if proxy:
-            working_proxies.discard(proxy)  # Remove shitty proxy
-    return None
+            working_proxies.discard(proxy)  # Remove shitty bad proxy
+    return None  
 
+# Generate a random username
 def create_username(min_chars, max_chars, use_dict_words=False):
-    """Generate a username: either using random dictionary words or just gibberish."""
-    length = random.randint(min_chars, max_chars)
-    
+    length = random.randint(min_chars, max_chars)  # Pick a random length faster pls 😭
     if use_dict_words:
         word_list = get_random_words(min_len=length, max_len=length)
-        return random.choice(word_list) if word_list else None
-
+        return random.choice(word_list) if word_list else None  # Use word list if available
     char_pool = string.ascii_letters + string.digits + '_'
-    return ''.join(random.choices(char_pool, k=length))
+    return ''.join(random.choices(char_pool, k=length))  # Otherwise generate a random username
+
 
 def search_for_usernames(target_count=5, enable_proxies=True, words_mode=False, min_chars=5, max_chars=20):
-    """The core function that finds available usernames."""
     found = []
-    attempts = 0
-    
+    attempts = 0  # Track how many names we check
     
     progress = Progress(
         SpinnerColumn(),
@@ -86,20 +80,16 @@ def search_for_usernames(target_count=5, enable_proxies=True, words_mode=False, 
         new_name = create_username(min_chars, max_chars, words_mode)
         if not new_name:
             return None
-            
         proxy = random.choice(list(working_proxies)) if enable_proxies and working_proxies else None
         progress.update(task, description=f"[cyan]Checking[/cyan] [yellow]{new_name}[/yellow]")
-        
         result = check_roblox_username(new_name, proxy)
         attempts += 1
         progress.update(task, status=f"Checked: {attempts}")
         return result
 
-    
     with Live(progress, refresh_per_second=10):
         with concurrent.futures.ThreadPoolExecutor(max_workers=15) as executor:
             while len(found) < target_count:
-                # Refresh proxies if they ran out
                 if enable_proxies and not working_proxies:
                     console.print("[yellow]🔍 Gathering fresh proxies...[/yellow]")
                     working_proxies.update(fetch_proxies())
@@ -107,7 +97,6 @@ def search_for_usernames(target_count=5, enable_proxies=True, words_mode=False, 
                         console.print("[red]❌ No proxies found, switching to direct requests[/red]")
                         enable_proxies = False
                 
-                # Batch processing for speed
                 batch_size = min(50, target_count - len(found))
                 futures = [executor.submit(validate_single_username) for _ in range(batch_size)]
                 
@@ -120,23 +109,22 @@ def search_for_usernames(target_count=5, enable_proxies=True, words_mode=False, 
 
     return found, attempts
 
+# Main
 def main():
     console.clear()
     console.print(Panel.fit(
         "[bold green]🌟 Roblox Username Finder 🌟[/bold green]",
-        subtitle="A tool design to monkey",
+        subtitle="A tool to find available Roblox usernames",
         border_style="bright_white",
         padding=(1, 1)
     ))
 
-    # Ask user their shitty preferences
     enable_proxies = Prompt.ask("[yellow]🔒 Use proxies to avoid rate limits?[/yellow]", choices=["yes", "no"], default="yes") == "yes"
-    use_words = Prompt.ask("[yellow]📚 Use dictionary words instead of random letters?[/yellow]", choices=["yes", "no"], default="no") == "yes"
+    use_words = Prompt.ask("[yellow]📚 Use dictionary words instead of random letters?[/yellow]", choices=["yes", "no"], default="no")
     
     min_length = int(Prompt.ask("[yellow]📏 Minimum username length?[/yellow]", default="5"))
     max_length = int(Prompt.ask("[yellow]📏 Maximum username length?[/yellow]", default="20"))
 
-    # Finding proxies if needed
     if enable_proxies:
         console.print("[cyan]🌐 Fetching proxies...[/cyan]")
         working_proxies.update(fetch_proxies())
@@ -144,14 +132,11 @@ def main():
     else:
         console.print("[cyan]⚠️ Proxies disabled, might hit rate limits[/cyan]")
     
-    # How many usernames
     num_usernames = int(Prompt.ask("[yellow]🎯 How many usernames should we find?[/yellow]", default="5"))
     
-    # TADAA
     console.print("\n[cyan]🔍 Beginning search...[/cyan]")
     found_names, total_checks = search_for_usernames(num_usernames, enable_proxies, use_words, min_length, max_length)
     
-    # The baka result
     table = Table(show_header=True, header_style="bold magenta")
     table.add_column("Available Usernames", style="cyan")
     table.add_column("Total Attempts", style="green")
@@ -170,7 +155,8 @@ def main():
         for proxy in working_proxies:
             console.print(f"- {proxy}")
 
-    console.print("\n[bold yellow]🎉 Happy username nika![/bold yellow]")
+    console.print("\n[bold yellow]🎉 Happy username hunting![/bold yellow]")
+    input("\nPress Enter to exit...")
 
 if __name__ == "__main__":
     main()
